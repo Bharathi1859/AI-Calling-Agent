@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AI Calling Agent - Voice Test</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 12px 20px;
+            margin: 10px 5px 10px 0;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f2f2f2;
+            border-radius: 8px;
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f8f8;
+            border-radius: 8px;
+            white-space: pre-wrap;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>AI Calling Agent</h1>
+
+    <p>
+        Browser voice test for the AI calling agent.
+    </p>
+
+    <button id="startButton">
+        Start Recording
+    </button>
+
+    <button id="stopButton" disabled>
+        Stop Recording
+    </button>
+
+    <div id="status">
+        Ready.
+    </div>
+
+    <div id="result"></div>
+
+    <audio id="audioPlayer" controls></audio>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+        const status = document.getElementById("status");
+        const result = document.getElementById("result");
+        const audioPlayer = document.getElementById("audioPlayer");
+
+        startButton.addEventListener("click", async () => {
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: true
+                });
+
+                audioChunks = [];
+
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = async () => {
+
+                    stream.getTracks().forEach(track => track.stop());
+
+                    const audioBlob = new Blob(
+                        audioChunks,
+                        { type: "audio/webm" }
+                    );
+
+                    status.textContent = "Sending audio to AI agent...";
+
+                    const formData = new FormData();
+
+                    formData.append(
+                        "audio",
+                        audioBlob,
+                        "customer_message.webm"
+                    );
+
+                    try {
+
+                        const response = await fetch(
+                            "http://127.0.0.1:8000/voice/process/1",
+                            {
+                                method: "POST",
+                                body: formData
+                            }
+                        );
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(
+                                data.detail || "Voice API request failed"
+                            );
+                        }
+
+                        result.textContent =
+                            "Customer: " +
+                            data.customer_text +
+                            "\n\nAI: " +
+                            data.agent_response;
+
+                        const audioUrl =
+                            "http://127.0.0.1:8000/" +
+                            data.audio_file.replaceAll("\\", "/");
+
+                        audioPlayer.src = audioUrl;
+
+                        status.textContent =
+                            "AI response received.";
+
+                        audioPlayer.play();
+
+                    } catch (error) {
+
+                        console.error(error);
+
+                        status.textContent =
+                            "Error: " + error.message;
+                    }
+                };
+
+                mediaRecorder.start();
+
+                startButton.disabled = true;
+                stopButton.disabled = false;
+
+                status.textContent =
+                    "Recording... Speak now.";
+
+            } catch (error) {
+
+                console.error(error);
+
+                status.textContent =
+                    "Microphone permission error: " +
+                    error.message;
+            }
+        });
+
+        stopButton.addEventListener("click", () => {
+
+            if (mediaRecorder) {
+
+                mediaRecorder.stop();
+
+                startButton.disabled = false;
+                stopButton.disabled = true;
+
+                status.textContent =
+                    "Recording stopped. Processing...";
+            }
+        });
+    </script>
+
+</body>
+</html>
